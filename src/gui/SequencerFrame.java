@@ -22,6 +22,7 @@ import javax.swing.JFileChooser;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyleContext;
@@ -35,19 +36,17 @@ public class SequencerFrame extends javax.swing.JFrame {
     
     private boolean running_bol = false;
     private int actualIndexToTable_i = 999;
-    MyMqttClient client;
+    private MyMqttClient client;
     private boolean clientConnected_bol = false;
+    private int newIndexToTable_i = 0;
 
     /**
      * Creates new form SequencerFrame
      */
-    public SequencerFrame() {
+    public SequencerFrame() 
+    {
         initComponents();
         time_jl.setForeground(Color.red);
-        DefaultTableModel model = (DefaultTableModel)table_jt.getModel();
-        model.setValueAt("Test", 1, 1);
-        System.out.println(model.getValueAt(1, 0));
-
         new SequencerFrame.DataCollector().execute();
     }
 
@@ -220,6 +219,8 @@ public class SequencerFrame extends javax.swing.JFrame {
         time_jl.setToolTipText("");
         time_jl.setBorder(javax.swing.BorderFactory.createBevelBorder(javax.swing.border.BevelBorder.RAISED));
 
+        log_jtp.setBackground(new java.awt.Color(204, 204, 204));
+        log_jtp.setEnabled(false);
         jScrollPane1.setViewportView(log_jtp);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
@@ -278,28 +279,39 @@ public class SequencerFrame extends javax.swing.JFrame {
     private void loadButtonActionHandler()
     {
         //Create a file chooser
-        final JFileChooser fc = new JFileChooser();
-        
+        final JFileChooser fc = new JFileChooser();       
         int returnVal = fc.showOpenDialog(this);
         
-        if (returnVal == JFileChooser.APPROVE_OPTION) {
+        if (returnVal == JFileChooser.APPROVE_OPTION) 
+        {
             File file = fc.getSelectedFile();
             // file is existing, read data
-            BufferedReader in = null; 
+             
             try 
             { 
-                in = new BufferedReader(new FileReader(file)); 
-                String line = null; 
+                BufferedReader in = new BufferedReader(new FileReader(file)); 
+                String line; 
                 int index_i = 0;
                 DefaultTableModel model = (DefaultTableModel)table_jt.getModel();
                 
-                while (((line = in.readLine()) != null) && (index_i != model.getRowCount())) { 
-                    model.setValueAt(line, index_i, 1);
-                    System.out.println("Gelesene Zeile: " + line);
+                while (((line = in.readLine()) != null) && (index_i != model.getRowCount())) 
+                {
+                    StringTokenizer lineTokens = new StringTokenizer(line, ",");
+                    switch(lineTokens.countTokens())
+                    {
+                        case 2:
+                            lineTokens.nextToken();
+                            model.setValueAt(lineTokens.nextToken(), index_i, 1);
+                            break;
+                        default:
+                            model.setValueAt("", index_i, 1);
+                            break;
+                    }
                     index_i++;
                 } 
                 in.close();
-            } catch (IOException ex) {
+            }catch (IOException ex) 
+            {
                 Logger.getLogger(SequencerFrame.class.getName()).log(Level.SEVERE, null, ex);
             }          
         }       
@@ -309,15 +321,17 @@ public class SequencerFrame extends javax.swing.JFrame {
     {
         //Create a file chooser
         final JFileChooser fc = new JFileChooser();
-        PrintWriter printer = null;
-        
+        PrintWriter printer = null;       
         int returnVal = fc.showOpenDialog(this);
         
-        if (returnVal == JFileChooser.APPROVE_OPTION) {
+        if (returnVal == JFileChooser.APPROVE_OPTION) 
+        {
             File file = fc.getSelectedFile();
-            try {
+            try 
+            {
                 printer = new PrintWriter(new FileWriter(file), true);
-            } catch (IOException ex) {
+            }catch (IOException ex) 
+            {
                 Logger.getLogger(SequencerFrame.class.getName()).log(Level.SEVERE, null, ex);
             }
             
@@ -328,29 +342,20 @@ public class SequencerFrame extends javax.swing.JFrame {
                 
                 while(index_i != model.getRowCount())
                 {
-                    String rowEntry = (String)model.getValueAt(index_i, 1);
-                    if(rowEntry == null)
-                        rowEntry = "";
+                    String time = (String)model.getValueAt(index_i, 0);
+                    String mqttMsg = (String)model.getValueAt(index_i, 1);
+                    if(mqttMsg == null)
+                        mqttMsg = "";
                     
-                    printer.println(rowEntry);
+                    printer.println(time + "," + mqttMsg);
                     printer.flush(); 
                     index_i++;
                 }
-                printer.close();
-                
-            }
-            else
-            {
-            }           
+                printer.close();            
+            }          
         } 
-        else 
-        {
-            if(null != printer)
-            {
-                printer.close();
-            }         
-        }
     }
+    
     private void modeButtonActionHandler()
     {
        if(this.mode_jtb.isSelected())
@@ -391,15 +396,8 @@ public class SequencerFrame extends javax.swing.JFrame {
                 // if currently running
                 if(true == running_bol)
                 {
-                    // calculate current index entry:
-                    // actual time per day in secs -> actTime 
-                    // index time slize in secs -> iSize = 15*60
-                    // tableIndex = (int)actTime/iSize
-                    Calendar rightNow_c = Calendar.getInstance();
-                    int newIndexToTable_i = 
-                            (int)((rightNow_c.get(Calendar.HOUR_OF_DAY) * 3600 + rightNow_c.get(Calendar.MINUTE) * 60 + 
-                                rightNow_c.get(Calendar.SECOND)) 
-                                / (15 * 60) + 0.5);
+                    
+                    newIndexToTable_i = UpdateTableIndex();
                     
                     // table index not equal lastTableIndex
                     if(actualIndexToTable_i != newIndexToTable_i)
@@ -422,61 +420,85 @@ public class SequencerFrame extends javax.swing.JFrame {
                             StringTokenizer msgComplete_st = new StringTokenizer(nextMsg, " ");
                             String msg = "n/a";
                             String payload = "n/a";
-                            boolean msgParseOk_bol = false;
-                            boolean msgSent_bol = false;
-                            if(2 == msgComplete_st.countTokens())
-                            {
-                                msg = msgComplete_st.nextToken();
-                                payload = msgComplete_st.nextToken();
-                                msgParseOk_bol = true;
-
-                            }
-                            else if(1 == msgComplete_st.countTokens())
-                            {
-                                msg = msgComplete_st.nextToken();
-                                payload = "";
-                                msgParseOk_bol = true;
-                            }
-
-                            if(null != client)
-                            {
-                                client.publish(msg, payload);
-                                msgSent_bol = true;
-                            }
-                                                      
-                            Date d = new Date();
-            
-                            SimpleDateFormat sdfmt = new SimpleDateFormat();
-                            sdfmt.applyPattern( "hh.mm" );
+                            String error = "";
                             
-                            Document doc = log_jtp.getDocument();
-                            StyleContext sc = StyleContext.getDefaultStyleContext();
-                            if(msgSent_bol)
+                            switch (msgComplete_st.countTokens()) 
                             {
-                                AttributeSet as = sc.addAttribute(sc.getEmptySet(), 
-                                StyleConstants.Foreground, Color.BLACK);
-                                doc.insertString(doc.getLength(), sdfmt.format(d) + " -> " + nextMsg + "\n", as);
+                                case 2:
+                                    // message + payload
+                                    msg = msgComplete_st.nextToken();
+                                    payload = msgComplete_st.nextToken();
+                                    break;
+                                case 1:
+                                    // message only
+                                    msg = msgComplete_st.nextToken();
+                                    payload = "";
+                                    break;
+                                default:
+                                    error = "MSG ERR";
+                                    break;
+                            }
+                              
+                            if(true == clientConnected_bol)
+                            {
+                                client.publish(msg, payload);                               
                             }
                             else
                             {
-                                AttributeSet as = sc.addAttribute(sc.getEmptySet(), 
-                                StyleConstants.Foreground, Color.RED);
-                                doc.insertString(doc.getLength(), "CLIENT ERR " + sdfmt.format(d) + " -> " + nextMsg + "\n", as);
+                                error = "CLIENT ERR";
                             }
                             
-                            if(msgParseOk_bol == false)
-                            {
-                                AttributeSet as = sc.addAttribute(sc.getEmptySet(), 
-                                StyleConstants.Foreground, Color.RED);
-                                doc.insertString(doc.getLength(), "MSG ERR " + sdfmt.format(d) + " -> " + nextMsg + "\n", as);
-                            }
+                            updateLog(error, msg, payload);
                         }
                     }                   
                 }                  
-                    // execute if entry is valid
-                    // mark lastTableIndex = tableIndex
             }
             catch ( /* InterruptedException, ExecutionException */ Exception e ) { }
+        }
+    }
+    
+    public int UpdateTableIndex()
+    {
+        int index_i;
+        Calendar rightNow_c = Calendar.getInstance();
+        
+        // calculate current index entry:
+           // actual time per day in secs -> actTime 
+           // index time slize in secs -> iSize = 15*60
+           // tableIndex = (int)actTime/iSize           
+        /*index_i = (int)((rightNow_c.get(Calendar.HOUR_OF_DAY) * 3600 + 
+                                rightNow_c.get(Calendar.MINUTE) * 60 + 
+                                rightNow_c.get(Calendar.SECOND)) 
+                                / (15 * 60) + 0.5);*/
+        index_i = newIndexToTable_i += 1;
+        System.out.println(index_i);
+        return(index_i);
+    }
+    
+    public void updateLog(String code, String msg, String payload)
+    {
+        Date d = new Date();
+            
+        SimpleDateFormat sdfmt = new SimpleDateFormat();
+        sdfmt.applyPattern( "hh.mm" );
+
+        Document doc = log_jtp.getDocument();
+        StyleContext sc = StyleContext.getDefaultStyleContext();
+        
+        Color col = Color.green;
+        
+        if(!code.equalsIgnoreCase(""))
+        {
+            col = Color.red;
+        }
+        AttributeSet as = sc.addAttribute(sc.getEmptySet(), 
+        StyleConstants.Foreground, col);
+        try 
+        {
+            doc.insertString(doc.getLength(), sdfmt.format(d) + " -> " + msg + " payload: " + payload + "\n", as);
+        }catch (BadLocationException ex) 
+        {
+            Logger.getLogger(SequencerFrame.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
