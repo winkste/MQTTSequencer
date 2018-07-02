@@ -1,3 +1,7 @@
 
 *.class
 *.class
+build/classes/gui/Sequencer.class
+build/classes/gui/SequencerFrame.class
+build/classes/myMqtt/MyMqttClient.class
+macBook_pro_mqttsequencer-tcp192168178451883/.lck
