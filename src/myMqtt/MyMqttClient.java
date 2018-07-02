@@ -81,6 +81,17 @@ public class MyMqttClient implements MqttCallback
         }
     }
     
+    public boolean isConnected()
+    {
+        boolean isConnected_bol = false;
+        
+        if(client != null)
+        {
+            isConnected_bol = client.isConnected();
+        }
+        return(isConnected_bol);
+    }
+    
     public void disconnect()
     {
         try {
