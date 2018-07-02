@@ -483,11 +483,12 @@ public class SequencerFrame extends javax.swing.JFrame {
            // actual time per day in secs -> actTime 
            // index time slize in secs -> iSize = 15*60
            // tableIndex = (int)actTime/iSize           
-        /*index_i = (int)((rightNow_c.get(Calendar.HOUR_OF_DAY) * 3600 + 
+        index_i = (int)((rightNow_c.get(Calendar.HOUR_OF_DAY) * 3600 + 
                                 rightNow_c.get(Calendar.MINUTE) * 60 + 
                                 rightNow_c.get(Calendar.SECOND)) 
-                                / (15 * 60) + 0.5);*/
-        index_i = newIndexToTable_i += 1;
+                                / (15 * 60) + 0.5);
+        // test time calculation: fast cycle
+        //index_i = newIndexToTable_i += 1;
         System.out.println(index_i);
         return(index_i);
     }
